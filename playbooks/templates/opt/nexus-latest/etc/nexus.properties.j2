@@ -1,0 +1,14 @@
+application-port=8081
+application-port-ssl=8084
+application-host={{ hostvars[inventory_hostname]['ansible_host'] }}
+nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
+nexus-context-path=/
+
+# Nexus section
+nexus-edition=nexus-pro-edition
+nexus-features=\
+ nexus-pro-feature
+
+nexus.hazelcast.discovery.isEnabled=true
+nexus.onboarding.enabled=False
+nexus.scripts.allowCreation=true

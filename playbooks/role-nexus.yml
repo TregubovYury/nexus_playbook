@@ -1,0 +1,110 @@
+---
+- hosts:
+    - nexus_host
+  handlers:
+    - include: handlers/main.yml
+  become: true
+  vars_files:
+    - vars/nexus.yml
+
+  pre_tasks:
+    - name: Check if ansible cannot be run here
+      stat:
+        path: /etc/no-ansible
+      register: no_ansible
+
+    - name: Verify if we can run ansible
+      assert:
+        that:
+          - "not no_ansible.stat.exists"
+        success_msg: "We are able to run on this node"
+        fail_msg: "/etc/no-ansible exists - skipping run on this node"
+
+    - name: Ensure nexus storage partition exists
+      community.general.parted:
+        device: /dev/nvme1n1
+        number: 1
+        label: gpt
+        state: present
+        fs_type: ext4
+      when: (format_host is defined) and (format_host == 'yes')
+
+    - name: Ensure a ext4 filesystem on nexus storage is formatted
+      community.general.filesystem:
+        fstype: ext4
+        dev: /dev/nvme1n1p1
+      when: (format_host is defined) and (format_host == 'yes')
+
+    - name: Ensure nexus storage partition is mounted
+      ansible.posix.mount:
+        path: '{{ nexus_docker_blob_path }}'
+        src: /dev/nvme1n1p1
+        fstype: ext4
+        state: mounted
+      when: (format_host is defined) and (format_host == 'yes')
+
+  roles:
+    - role: geerlingguy.java
+    - role: ansible-thoteam.nexus3-oss
+
+  tasks:
+    - name: Ensure nexus-default.properties is up-to-date
+      ansible.builtin.template:
+        src: opt/nexus-latest/etc/nexus.properties.j2
+        dest: "{{ nexus_installation_dir }}/nexus-latest/etc/nexus-default.properties"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes
+      notify: restart_nexus
+
+    - name: Ensure jetty-https.xml config is up-to-date
+      ansible.builtin.template:
+        src: opt/nexus-latest/etc/jetty/jetty-https.xml
+        dest: "{{ nexus_installation_dir }}/nexus-latest/etc/jetty/jetty-https.xml"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes
+      notify: restart_nexus
+
+    - name: Generate an OpenSSL private key
+      openssl_privatekey:
+        path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_privkey.pem"
+        size: "2048"
+        type: "RSA"
+        backup: yes
+
+    - name: Generate an OpenSSL Certificate Signing Request with Subject information
+      openssl_csr:
+        path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus.csr"
+        privatekey_path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_privkey.pem"
+        country_name: "EU"
+        organization_name: "DEVOPS"
+        email_address: "admin@example.com"
+        subject_alt_name: "IP:{{ hostvars[inventory_hostname]['ansible_host'] }}"
+
+    - name: Generate a Self Signed OpenSSL certificate for nexus
+      openssl_certificate:
+        path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_selfsigned.pem"
+        privatekey_path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_privkey.pem"
+        csr_path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus.csr"
+        provider: selfsigned
+
+    - name: Convert selfsigned cert into trustkeystore
+      community.general.java_keystore:
+        name: nexus_selfsigned
+        password: password
+        certificate_path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_selfsigned.pem"
+        private_key_path: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/nexus_privkey.pem"
+        dest: "{{ nexus_installation_dir }}/nexus-latest//etc/ssl/keystore.jks"
+      notify: restart_nexus
+
+  post_tasks:
+    - name: Touching run file that ansible has ran here
+      file:
+        path: /var/log/ansible.run
+        state: touch
+        mode: '0644'
+        owner: root
+        group: root

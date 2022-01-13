@@ -1,0 +1,83 @@
+---
+java_packages:
+  - openjdk-8-jdk
+nexus_installation_dir: "/opt"
+nexus_default_port: 8081
+nexus_default_https_port: 8084
+nexus_docker_https_port: 8083
+docker_repo_user: docker
+nexus_docker_bearer_token_realm: true
+nexus_docker_blob_path: /mnt/nexus_store
+nexus_timezone: '{{ time_zone }}'
+httpd_setup_enable: false
+nexus_privileges:
+  - name: all-repos-read
+    description: 'Read & Browse access to all repos'
+    repository: '*'
+    actions:
+      - read
+      - browse
+
+nexus_roles:
+  - name: docker
+    id: docker
+    description: Docker program access
+    privileges:
+      - nx-search-read
+      - all-repos-read
+      - nx-repository-view-docker-*-*
+      - nx-repository-view-docker-*-add
+      - nx-repository-view-docker-*-browse
+      - nx-repository-view-docker-*-delete
+      - nx-repository-view-docker-*-edit
+      - nx-repository-view-docker-*-read
+
+
+
+nexus_local_users:
+  - username: "{{ docker_repo_user }}"
+    first_name: Docker
+    last_name: CI
+    email: support@company.com
+    password: "{{ docker_repo_password }}"
+    roles:
+      - docker
+
+nexus_blobstores:
+  - name: docker-images
+    path: '{{ nexus_docker_blob_path }}'
+
+nexus_repos_docker_hosted:
+  - name: neom
+    http_port: " {{ nexus_docker_http_port }} "
+    https_port: "{{ nexus_docker_https_port }}"
+    force_basic_auth: true
+    v1_enabled: false
+    write_policy: allow
+
+#nexus_scheduled_tasks:
+#  - name: compact-blobstore
+#    cron: '0 0 22 * * ?'
+#    typeId: blobstore.compact
+#    taskProperties:
+#      blobstoreName: 'company-artifacts'
+#
+# nexus_repos_maven_proxy:
+#   - name: central
+#     remote_url: 'https://repo1.maven.org/maven2/'
+#     layout_policy: permissive
+#   - name: jboss
+#     remote_url: 'https://repository.jboss.org/nexus/content/groups/public-jboss/'
+#   - name: vaadin-addons
+#     remote_url: 'https://maven.vaadin.com/vaadin-addons/'
+#   - name: jaspersoft
+#     remote_url: 'https://jaspersoft.artifactoryonline.com/jaspersoft/jaspersoft-repo/'
+#     version_policy: mixed
+#
+# nexus_repos_maven_group:
+#   - name: public
+#     member_repos:
+#       - central
+#       - jboss
+#       - vaadin-addons
+#       - jaspersoft
